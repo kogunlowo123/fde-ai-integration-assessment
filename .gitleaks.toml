@@ -1,0 +1,30 @@
+# gitleaks configuration.
+#
+# The repository ships published development credentials on purpose: they are
+# documented in .env.example and the README, and `Settings` refuses to start in
+# production while they are in place. They are allowlisted here so the scan
+# stays useful, a scanner that always fails is a scanner nobody reads.
+#
+# Note the schema: gitleaks expects a single `[allowlist]` table, not repeated
+# `[[allowlist]]` array entries, which fail to decode with
+# "'Allowlist' expected a map, got 'slice'".
+
+title = "fde-assessment"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Published development credentials and payment-card test numbers"
+regexes = [
+  # Development credentials, see .env.example
+  '''dev-admin-token''',
+  '''dev-viewer-token''',
+  '''dev-tenant-[ab]-key''',
+  '''dev-only-pepper-not-a-secret''',
+  # Vendor-published card test numbers used by the PII guardrail tests
+  '''4111[ -]?1111[ -]?1111[ -]?1111''',
+  '''5500[ -]?0055[ -]?5555[ -]?5559''',
+  '''3782[ -]?822463[ -]?10005''',
+  '''6011[ -]?1111[ -]?1111[ -]?1117''',
+]

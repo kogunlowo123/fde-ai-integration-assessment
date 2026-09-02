@@ -1,0 +1,133 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fde-assessment"
+version = "0.1.0"
+description = "FDE / AI Integration Engineer assessment: MCP server, MCP security gateway, LLM gateway with streaming PII guardrails, token-aware rate limiting, model fallback routing, and a RAG production enhancement."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Kehinde Ogunlowo" }]
+keywords = ["mcp", "llm-gateway", "llmops", "ai-security", "rag", "fde"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "mcp>=1.9.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.27.0",
+    "aiosqlite>=0.20.0",
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "bandit[toml]>=1.7.10",
+    "pip-audit>=2.7.3",
+    "build>=1.2.2",
+    "types-aiofiles>=24.1.0",
+]
+
+[project.scripts]
+fde-mcp-server = "fde_assessment.mcp_server.server:main"
+
+[project.urls]
+Documentation = "./README.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fde_assessment"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "scripts", "README.md", "LICENSE"]
+
+# --------------------------------------------------------------------------
+# Ruff: lint + format
+# --------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # comprehensions
+    "UP",   # pyupgrade
+    "ASYNC",# flake8-async
+    "S",    # bandit-style security rules
+    "T20",  # flake8-print  (guards the MCP stdio isolation requirement)
+    "RUF",
+]
+ignore = [
+    "S101",  # assert is fine (tests, internal invariants)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "T20"]
+# Homoglyphs and full-width digits are the subject under test here, so ruff's
+# ambiguous-unicode rules would be flagging the payloads themselves.
+"tests/security/test_adversarial.py" = ["S", "T20", "RUF001", "RUF002", "RUF003"]
+"scripts/**" = ["T20"]  # CLI scripts intentionally print to stdout
+
+[tool.ruff.lint.isort]
+known-first-party = ["fde_assessment"]
+
+# --------------------------------------------------------------------------
+# mypy
+# --------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+warn_return_any = true
+no_implicit_reexport = true
+show_error_codes = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["mcp.*", "aiosqlite.*"]
+ignore_missing_imports = true
+
+# --------------------------------------------------------------------------
+# pytest
+# --------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "slow: tests that take more than a second",
+    "ollama: requires a local Ollama daemon (never run in CI)",
+]
+
+# --------------------------------------------------------------------------
+# bandit
+# --------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build", "dist"]
+
+[tool.coverage.run]
+source = ["src/fde_assessment"]
+branch = true

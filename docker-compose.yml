@@ -1,0 +1,102 @@
+# Local demonstration of the full path:
+#
+#   agent -> mcp-gateway -> mcp-downstream (mock MCP server)
+#   client -> llm-gateway -> mock provider -> guardrail
+#
+# Everything runs on the mock provider: no API key, no GPU, no network egress.
+#
+# The tokens below are the published development values. They are refused in
+# production by `Settings`, see `.env.example`.
+
+name: fde-assessment
+
+x-common: &common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  environment: &common-env
+    APP_ENV: development
+    LOG_LEVEL: INFO
+    LOG_FORMAT: json
+    # The container must listen on its published interface; the application
+    # default is loopback so a bare `python -m ...` on a laptop is not exposed.
+    BIND_HOST: 0.0.0.0
+    DATABASE_PATH: /data/gateway.db
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m
+
+services:
+  mcp-downstream:
+    <<: *common
+    container_name: fde-mcp-downstream
+    command:
+      - python
+      - -c
+      - |
+        import uvicorn
+        from fde_assessment.mcp_server.http_mock import build_mock_downstream_app
+        uvicorn.run(build_mock_downstream_app(), host="0.0.0.0", port=9000, log_config=None)
+    environment:
+      <<: *common-env
+      HEALTHCHECK_PORT: "9000"
+    expose:
+      - "9000"
+    # Deliberately not published to the host: the threat model requires that
+    # the tool server is reachable only through the gateway.
+    networks:
+      - internal
+
+  mcp-gateway:
+    <<: *common
+    container_name: fde-mcp-gateway
+    command: ["python", "-m", "fde_assessment.mcp_gateway"]
+    environment:
+      <<: *common-env
+      HEALTHCHECK_PORT: "8000"
+      MCP_GATEWAY_PORT: "8000"
+      MCP_DOWNSTREAM_URL: http://mcp-downstream:9000/rpc
+      MCP_GATEWAY_TOKENS: dev-admin-token:admin,dev-viewer-token:viewer
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - mcp-downstream
+    networks:
+      - internal
+      - edge
+
+  llm-gateway:
+    <<: *common
+    container_name: fde-llm-gateway
+    command: ["python", "-m", "fde_assessment.llm_gateway"]
+    environment:
+      <<: *common-env
+      HEALTHCHECK_PORT: "8001"
+      LLM_GATEWAY_PORT: "8001"
+      PRIMARY_PROVIDER: mock
+      SECONDARY_PROVIDER: mock
+      RATE_LIMIT_TOKENS: "50000"
+      RATE_LIMIT_WINDOW_SECONDS: "60"
+      PRIMARY_TIMEOUT_MS: "3000"
+      LLM_GATEWAY_TENANTS: dev-tenant-a-key:tenant-a,dev-tenant-b-key:tenant-b
+    ports:
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - gateway-data:/data
+    networks:
+      - edge
+
+volumes:
+  gateway-data:
+
+networks:
+  # `internal: true` means the tool server has no route off this network,
+  # the gateway is the only way in.
+  internal:
+    internal: true
+  edge:
